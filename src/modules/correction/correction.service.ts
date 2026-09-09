@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import Decimal from "decimal.js";
-import { and, desc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
   auditLogs,
@@ -125,6 +125,11 @@ export async function createCorrection(actor: ActorContext, input: { entityType:
   assertPermission(actor, Permission.CORRECTION_CREATE);
   if (!input.reason.trim()) throw appError("Correction reason is required", 422, "CORRECTION_REASON_REQUIRED");
   const result = await db.transaction(async (tx) => {
+    const initialContext = await sourceContext(tx, input.entityType, input.entityId);
+    if (!initialContext) throw appError("Correctable entity not found", 404, "ENTITY_NOT_FOUND");
+    const [sourceIdentity] = await tx.select({ sourceId: rawSubmissions.dataSourceId }).from(rawSubmissions).where(eq(rawSubmissions.id, initialContext.sourceSubmissionId));
+    if (!sourceIdentity) throw appError("Raw source not found", 404);
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${sourceIdentity.sourceId}, 0))`);
     const contextBefore = await sourceContext(tx, input.entityType, input.entityId);
     if (!contextBefore) throw appError("Correctable entity not found", 404, "ENTITY_NOT_FOUND");
     if (contextBefore.status === "SUPERSEDED") throw appError("Superseded source records cannot be corrected", 409, "SOURCE_SUPERSEDED");

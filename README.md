@@ -1,7 +1,7 @@
 # Dopamin Cafe Accounting & Inventory System
 
 > **Codex handoff snapshot — v0.9.0-handoff**  
-> Internal application for Dopamin Cafe. This repository is intended to be the single source tree handed off for continued implementation in Codex. It is **not yet certified as a production release** because dependency-aware build, a real PostgreSQL bootstrap, end-to-end tests, and deployment validation still need to be completed.
+> Internal application for Dopamin Cafe. This repository is intended to be the single source tree handed off for continued implementation in Codex. It is **not yet certified as a production release** because actual Google ingestion, end-to-end UAT, backup/restore and deployment validation remain incomplete. Install, bootstrap, Neon connectivity and Owner OAuth/login were already verified; see section 28 for current evidence.
 
 ---
 
@@ -160,7 +160,7 @@ Current repository baseline:
 - **Google Apps Script** for Form/Sheet webhook, reconciliation replay, scheduler heartbeat, and MailApp delivery
 - PWA manifest + service worker
 
-> Dependency versions are currently specified as `latest` because a successful registry install could not be completed in the original development environment. The first Codex task after successful install should be to generate a lockfile and pin/verify compatible versions.
+> Dependencies are installed and `package-lock.json` is tracked. The installed baseline uses Next.js 16.3.4 and Auth.js/NextAuth v5. Most package.json ranges still use `latest`; use the lockfile for reproducible installs and review pinning separately. Preserve the working Auth.js v5 flow.
 
 ---
 
@@ -478,9 +478,9 @@ The ingestion service hashes the raw payload.
 
 - same source + same row key + same payload hash → idempotent/no duplicate
 - same row key + changed payload → a new raw revision is inserted
-- previous revision is marked `SUPERSEDED`
+- previous revisions are superseded atomically with successful normalization; failures retain raw ERROR evidence and flag earlier current reports NEEDS_REVIEW
 
-The original raw payload is retained in JSONB.
+The original raw payload is retained in JSONB. Per-source transaction locks serialize ingestion/reprocess/correction. Apps Script uses identical live/replay payloads and supports bounded checkpointed `backfillRows()`. See [setup and exact blockers](integrations/google-apps-script/README.md).
 
 ### Source field mappings
 
@@ -808,8 +808,8 @@ The current code preserves raw Google payload rather than overwriting it.
 Codex should complete:
 
 - raw-source correction overlay for failures that have no normalized target row yet
-- controlled reprocess/rebuild after mapping fixes
-- stronger atomic source-revision replacement semantics
+- reprocess operator UI and mapping-version attempt history (a guarded latest ERROR/NEEDS_REVIEW reprocess API now exists)
+- source-change acceptance UX and stale-event ordering (atomic normalization/replacement is implemented)
 - own-source authorization audit for every correction path
 - post-correction daily-sales accounting reversal/repost once Sales Clearing is implemented
 
@@ -868,10 +868,10 @@ Only after user action does the worker call `skipWaiting`, reducing the chance o
 
 ## 22. Environment variables
 
-Copy:
+This workspace uses `.env`; preserve its working secrets. For a fresh checkout only:
 
 ```bash
-cp .env.example .env.local
+cp .env.example .env
 ```
 
 Variables:
@@ -923,17 +923,12 @@ Recommended:
 npm install
 ```
 
-After the first successful install:
-
-- run typecheck/build
-- fix any dependency/API incompatibilities
-- commit a generated `package-lock.json`
-- replace unbounded `latest` dependencies with tested ranges/lockfile policy
+The current workspace already has installed dependencies and a tracked lockfile. Use `npm ci` for a fresh reproducible installation; typecheck and production build pass. Review unbounded dependency ranges separately.
 
 ### Step 2 — configure environment
 
 ```bash
-cp .env.example .env.local
+cp .env.example .env
 ```
 
 Fill all required values.
@@ -1162,33 +1157,25 @@ It checks:
 
 ---
 
-## 28. Current handoff verification status
+## 28. Current verification status - 2026-09-09
 
-### Performed in the original ChatGPT development runtime
+Stakeholder-verified before this task: npm install, dependencies, PostgreSQL bootstrap, DB smoke (40 tables/7 views), Neon connectivity, Owner bootstrap, Auth.js v5 Google OAuth, Owner login/dashboard, typecheck and production build. Bootstrap and OAuth setup were not repeated here.
 
-- Full repository was assembled from the last complete exported source baseline plus the hardening in this handoff.
-- Static critical-artifact/import verification is available and should be run before handoff.
-- TypeScript/TSX syntax parsing is performed by `scripts/verify-static.mjs` when global TypeScript is available.
+Verified again in this session:
 
-### Not certified in that runtime
+- Typecheck and full Next.js 16.3.4 / Turbopack production build: PASS.
+- DB smoke: PASS, 40 tables, 7 views and core invariants.
+- Static artifacts/imports: PASS; optional global syntax-parser step skipped.
+- All three actual sales overview queries execute against Neon with DB Owner permission and return empty results for an empty interval. Local tests preserve all five role scopes.
+- `/api/health`: 200. Unauthenticated dashboard/sales/cashier/finance: 307 to login. Unsigned webhook: 401.
+- Synthetic DB regression: PASS for idempotent replay, mapping reprocess, permission denial, changed-row supersession, raw retention, normalization failure savepoint and audit. All fixtures were rolled back; this is not actual Google ingestion.
+- Local HMAC and Apps Script mocks: payload parity, business date serialization, headers, retry and cursor tests pass.
 
-The original environment could not complete `npm install` because package-registry access timed out. PostgreSQL client/server was also unavailable there.
+npm script wrappers could not launch in this shell (execution policy / command-shell launcher). Equivalent installed entry points were used: `node node_modules/typescript/bin/tsc --noEmit`, `node node_modules/next/dist/bin/next build`, and `node --experimental-strip-types scripts/db-smoke.ts`. Database checks required network-enabled execution. No dependency/auth/secret changes were made.
 
-Therefore the following must **not** be assumed successful until Codex runs them:
+Authenticated Owner browser pages were NOT RETESTED here. The real `/sales` query regression is verified, but browser OAuth UAT was not repeated. Actual Google Sheet ingestion and MailApp delivery remain NOT TESTED. This is not production-ready.
 
-```text
-npm install
-npm run typecheck
-npm run build
-npm run db:bootstrap
-npm run db:smoke
-real OAuth login
-real Google Apps Script webhook
-email delivery
-end-to-end UAT
-```
-
-This is a deliberate transparency boundary: do not label the repository production-ready until those gates pass.
+See `docs/IMPLEMENTATION_STATUS_CURRENT.md` and `integrations/google-apps-script/README.md` for details and blockers.
 
 ---
 
@@ -1196,22 +1183,14 @@ This is a deliberate transparency boundary: do not label the repository producti
 
 Recommended priority order:
 
-### P0 — make the exported tree actually build/run
+### P0 - established runtime baseline
 
-1. `npm install`
-2. create/commit `package-lock.json`
-3. `npm run verify:static`
-4. `npm run typecheck`
-5. fix compile errors
-6. `npm run build`
-7. bootstrap a fresh PostgreSQL test DB
-8. `npm run db:smoke`
-9. start server and test `/api/health`
+Install/lockfile, bootstrap, typecheck, build, DB smoke and health are established. The `/sales` record-to-array cast bug is fixed using bound SQL parameters. Next: retest `/sales` in the working Owner browser session, then configure and test actual source ingestion.
 
 ### P1 — data/integration correctness
 
 1. Review raw-revision semantics when source rows change.
-2. Add controlled reprocess after mapping fixes.
+2. Exercise the guarded reprocess API with actual mappings; add operator UI later.
 3. Implement raw-source correction overlay without overwriting raw payload.
 4. Harden own-source authorization on all Data Issue/correction/detail APIs.
 5. Validate active master targets when saving mappings.
@@ -1279,14 +1258,14 @@ See `docs/CODEX_HANDOFF.md` for a concise continuation plan.
 Do **not** call this production-ready until all of these pass:
 
 ```text
-[ ] npm install succeeds
-[ ] package lock committed
-[ ] static verification passes
-[ ] dependency-aware TypeScript typecheck passes
-[ ] Next.js production build passes
-[ ] fresh PostgreSQL bootstrap passes
-[ ] DB smoke test passes
-[ ] Owner login works
+[x] npm install succeeds
+[x] package lock committed
+[x] static verification passes
+[x] dependency-aware TypeScript typecheck passes
+[x] Next.js production build passes
+[x] fresh PostgreSQL bootstrap passes
+[x] DB smoke test passes
+[x] Owner login works
 [ ] role authorization tested
 [ ] Google Cashier ingestion tested
 [ ] Google Kitchen ingestion tested
@@ -1368,7 +1347,7 @@ This project contains internal business-process, accounting, operational, and da
 npm install
 
 # 2. environment
-cp .env.example .env.local
+cp .env.example .env
 
 # 3. verify source
 npm run verify:static

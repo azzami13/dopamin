@@ -1,26 +1,30 @@
 # Release Checklist — Dopamin Cafe
 
+## Verification provenance - 2026-09-09
+
+Install, bootstrap and Owner OAuth/login were verified by the stakeholder before this task. Typecheck/build/DB smoke were repeated via equivalent installed entry points because npm wrappers could not launch in this shell. No production deployment or actual Sheet ingestion was performed. See IMPLEMENTATION_STATUS_CURRENT.md for exact limits.
+
 ## Build and source
 
-- [ ] `npm install` succeeds
-- [ ] package lock generated and committed
-- [ ] `npm run verify:static` passes
-- [ ] `npm run typecheck` passes
-- [ ] `npm run build` passes
+- [x] `npm install` succeeds
+- [x] package lock generated and committed
+- [x] `npm run verify:static` passes
+- [x] `npm run typecheck` passes
+- [x] `npm run build` passes
 - [ ] no production secret committed
 
 ## Database
 
-- [ ] fresh PostgreSQL database provisioned
-- [ ] `npm run db:bootstrap` passes
-- [ ] `npm run db:smoke` passes
+- [x] fresh PostgreSQL database provisioned
+- [x] `npm run db:bootstrap` passes
+- [x] `npm run db:smoke` passes
 - [ ] migration rerun behavior understood for target environment
 - [ ] backup created
 - [ ] backup restore tested into a separate database
 
 ## Master data
 
-- [ ] Owner created
+- [x] Owner created
 - [ ] Director/Manager/Cashier/Kitchen users configured
 - [ ] source aliases configured
 - [ ] actual Spreadsheet IDs / sheet names configured
@@ -35,7 +39,7 @@
 
 ## Authentication / RBAC
 
-- [ ] Owner login
+- [x] Owner login
 - [ ] Director login
 - [ ] Manager login
 - [ ] Cashier login
@@ -44,7 +48,17 @@
 - [ ] server-side permission tests for finance/settings/audit
 - [ ] own-source Cashier/Kitchen tests
 
-## Google integration
+## Local regression evidence
+
+- [x] Empty sales interval executes all three real PostgreSQL queries
+- [x] Five-role sales SQL scope tests
+- [x] Health 200 and protected-route login redirects
+- [x] Unsigned webhook rejected locally
+- [x] HMAC tamper/expiry and Apps Script payload/date/header/retry/cursor tests locally
+- [x] Synthetic DB ingestion/reprocess/raw-retention/failure/audit regression (rollback-only; actual Google UAT still open)
+- [ ] Authenticated Owner `/sales` browser retest after this fix
+
+## Google integration (actual Google UAT still required)
 
 - [ ] Cashier onFormSubmit succeeds
 - [ ] Kitchen onFormSubmit succeeds

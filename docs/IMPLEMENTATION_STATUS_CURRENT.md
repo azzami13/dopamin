@@ -1,4 +1,4 @@
-# Current Implementation Status — v0.9.0-handoff
+# Current Implementation Status — 2026-09-09
 
 ## Status legend
 
@@ -21,7 +21,7 @@
 | Health endpoint | Implemented | `/api/health`. |
 | Static verifier | Implemented | `npm run verify:static`. |
 | DB smoke test | Implemented | `npm run db:smoke` after real DB exists. |
-| Dependency-aware build | Blocked verification | Must be run in Codex. |
+| Dependency-aware build | Verified | Typecheck and full Next.js 16.3.4 production build pass. |
 
 ## Integration
 
@@ -30,10 +30,10 @@
 | HMAC Form webhook | Implemented | Cashier/Kitchen/Beverage live source path. |
 | Raw payload retention | Implemented | JSONB raw submissions. |
 | Payload idempotency | Implemented | source/row/hash handling. |
-| Raw revisioning | Partial | changed row creates revision; acceptance/reprocess semantics need hardening. |
+| Raw revisioning | Hardened | Source lock; atomic normalization/replacement/audit/closing; failed normalization savepoint preserves raw evidence. Source-change acceptance and stale-event ordering remain backlog. |
 | Field mappings | Implemented baseline | DB-driven normalizer mappings. |
 | User source aliases | Implemented in handoff | table/schema, normalizer resolution, Settings manager. |
-| Reprocess after mapping fix | Pending | priority Codex item. |
+| Reprocess after mapping fix | Implemented API | Latest ERROR/NEEDS_REVIEW; SETTINGS_MANAGE + CORRECTION_CREATE; reason/audit and corrected/financial history guards; operator UI pending. |
 | Raw-source correction overlay | Pending | preserve raw evidence. |
 | Validation thresholds | Pending | do not invent values. |
 
@@ -73,7 +73,7 @@
 
 | Area | Status | Notes |
 |---|---|---|
-| Daily completeness | Implemented + hardened | all current source reports must be VALID. |
+| Daily completeness | Implemented + hardened | Service and view both require all current non-superseded reports VALID. |
 | Management reporting view | Implemented | Food/Beverage/payment/expense/Housebank. |
 | BELUM LENGKAP behavior | Implemented baseline | scheduled daily snapshot flow. |
 | Weekly/monthly management report | Pending | Codex. |
@@ -85,16 +85,36 @@
 - final Company Funding accounting classification
 - DP/Promotion/Receivable daily sales accounting treatment
 
-## Verification needed in Codex
+## Verification evidence and limits
 
-```bash
-npm install
-npm run verify:static
-npm run typecheck
-npm run build
-npm run db:bootstrap
-npm run db:smoke
-npm run dev
-```
+Stakeholder verified before this task: npm install/dependencies, fresh bootstrap, DB smoke (40 tables/7 views), Neon connectivity, Owner creation, Auth.js v5 Google OAuth, Owner login/dashboard, typecheck and production build. These supersede the original blocked-install notes. The lockfile is tracked; this workspace uses `.env`.
 
-Then perform real OAuth, Google Apps Script, and UAT flows.
+| Current-session check | Result |
+|---|---|
+| Typecheck | PASS, installed TypeScript entry point |
+| Full production build | PASS, Next.js 16.3.4 / Turbopack |
+| DB smoke | PASS, 40 tables / 7 views and core invariants |
+| Static artifacts/imports | PASS; optional global syntax parser skipped |
+| Sales overview SQL | PASS: all three actual queries in Neon with DB Owner permission; empty interval returns empty results |
+| Five sales role scopes | PASS locally; own-source predicate retained |
+| HMAC / Apps Script mocks | PASS: signing, expiry, payload parity, dates, headers, retry/cursor |
+| Synthetic DB ingestion/reprocess | PASS: replay, mapping rebuild, permission denial, supersession, raw retention, failure savepoint and audit; all fixtures rolled back |
+| `/api/health` | PASS, HTTP 200 |
+| Protected routes | PASS: dashboard/sales/cashier/finance redirect to login without session |
+| Unsigned webhook | PASS, HTTP 401 |
+| Authenticated Owner pages | NOT RETESTED; prior stakeholder verification retained |
+| Actual Google Sheet / MailApp | NOT TESTED |
+
+npm wrappers failed to launch in this shell. Equivalent installed package entry points were run directly; DB checks needed network-enabled execution. No dependency/auth/secret changes, bootstrap rerun, migration, table/view definition changes or production deployment were performed.
+
+## Integration readiness
+
+The real DB has active CASHIER/KITCHEN/BEVERAGE sources, but Spreadsheet IDs/names are unset and there are zero active mappings/aliases. Supplied IDs/gids, exact missing information and setup instructions are centralized in `integrations/google-apps-script/README.md`. No live source configuration was changed.
+
+Apps Script selects the configured gid, uses identical typed-cell payloads for live/replay, and supports bounded checkpointed backfill. Row-number identity requires append-only response tabs; sorting/inserting/deleting rows requires a persistent-identity migration. A metadata-only helper obtains exact sheet names/headers after manual Google setup.
+
+Reprocess is restricted to incomplete, uncorrected, nonfinancial normalized rows. It preserves raw JSON/hash/revision and report IDs, audits prior normalized child values, regenerates issues/closings transactionally and rolls back on failure. Existing correction writes use the same source lock. General correction authorization review, raw overlays, mapping administration/version-attempt history and Sales Clearing reversal/repost remain backlog.
+
+Not production-ready: actual-source setup/UAT, unresolved accounting policies, backup/restore, PWA UAT and deployment gates remain open.
+
+The DB regression uses one owned rollback transaction instead of nesting service transaction wrappers inside a test transaction. Early harness attempts timed out; the final bounded run passed. Tagged abandoned test sessions were closed/rolled back. Concurrent multi-connection races are not covered by this synthetic test.

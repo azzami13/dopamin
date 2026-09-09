@@ -24,7 +24,7 @@ export async function getSalesOverview(actor: ActorContext, from: string, to: st
     join sales_report_items sri on sri.sales_report_id=sr.id
     where sr.business_date between ${from}::date and ${to}::date
       and sr.report_status='VALID'
-      and sr.report_type = any(${s.types}::text[])
+      and sr.report_type in (${sql.join(s.types.map((type) => sql`${type}`), sql`, `)})
       and (${!s.ownOnly} or sr.inputter_user_id=${actor.userId}::uuid)
     group by sr.report_type order by sr.report_type
   `);
@@ -37,7 +37,7 @@ export async function getSalesOverview(actor: ActorContext, from: string, to: st
     join menu_items mi on mi.id=sri.menu_item_id
     where sr.business_date between ${from}::date and ${to}::date
       and sr.report_status='VALID'
-      and sr.report_type = any(${s.types}::text[])
+      and sr.report_type in (${sql.join(s.types.map((type) => sql`${type}`), sql`, `)})
       and (${!s.ownOnly} or sr.inputter_user_id=${actor.userId}::uuid)
     group by mi.code, mi.name, mi.category
     order by revenue desc, quantity desc limit 20
@@ -50,7 +50,7 @@ export async function getSalesOverview(actor: ActorContext, from: string, to: st
     left join sales_report_items sri on sri.sales_report_id=sr.id
     where sr.business_date between ${from}::date and ${to}::date
       and sr.report_status <> 'SUPERSEDED'
-      and sr.report_type = any(${s.types}::text[])
+      and sr.report_type in (${sql.join(s.types.map((type) => sql`${type}`), sql`, `)})
       and (${!s.ownOnly} or sr.inputter_user_id=${actor.userId}::uuid)
     group by sr.id
     order by sr.business_date desc, sr.report_type, sr.id desc limit 200

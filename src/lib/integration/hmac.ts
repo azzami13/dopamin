@@ -13,9 +13,9 @@ export function verifySignedRequest(input: {
   maxSkewSeconds?: number;
 }): boolean {
   const { body, timestamp, signature, secret } = input;
-  if (!timestamp || !signature) return false;
+  if (!timestamp || !signature || !secret || !/^\d+$/.test(timestamp)) return false;
   const epoch = Number(timestamp);
-  if (!Number.isFinite(epoch)) return false;
+  if (!Number.isSafeInteger(epoch)) return false;
   const now = input.now ?? Math.floor(Date.now() / 1000);
   if (Math.abs(now - epoch) > (input.maxSkewSeconds ?? 300)) return false;
   const expected = signBody(body, timestamp, secret);

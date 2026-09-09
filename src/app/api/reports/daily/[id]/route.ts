@@ -1,0 +1,2 @@
+import { correlationId,fail,ok,requireApiActor } from "@/lib/http/api";import { getDailyReportRun } from "@/modules/reporting/daily-report.service";
+export async function GET(request:Request,{params}:{params:Promise<{id:string}>}){const cid=correlationId(request);try{const {id}=await params;return ok(await getDailyReportRun(await requireApiActor(),id),cid)}catch(error){return fail(error,cid,"REPORT_DETAIL_FAILED")}}

@@ -1,0 +1,39 @@
+{
+  "name": "dopamin-cafe-accounting-inventory",
+  "version": "0.9.0-handoff",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:seed": "tsx scripts/seed.ts",
+    "typecheck": "tsc --noEmit",
+    "db:bootstrap": "tsx scripts/bootstrap-db.ts",
+    "user:create": "tsx scripts/create-user.ts",
+    "verify:static": "node scripts/verify-static.mjs",
+    "db:smoke": "tsx scripts/db-smoke.ts",
+    "check": "npm run verify:static && npm run typecheck"
+  },
+  "dependencies": {
+    "decimal.js": "latest",
+    "dotenv": "latest",
+    "drizzle-orm": "latest",
+    "next": "latest",
+    "next-auth": "^5.0.0-beta.32",
+    "postgres": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "recharts": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "drizzle-kit": "latest",
+    "tsx": "latest",
+    "typescript": "latest"
+  }
+}

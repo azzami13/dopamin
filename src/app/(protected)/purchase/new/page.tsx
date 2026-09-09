@@ -1,0 +1,2 @@
+import { requirePermission } from "@/lib/auth/authorization";import { Permission } from "@/lib/auth/permissions";import { jakartaDate } from "@/lib/time/business-date";import { PurchaseCreateForm } from "@/components/purchase/purchase-create-form";
+export default async function NewPurchase(){await requirePermission(Permission.PURCHASE_CREATE);return <main className="page-shell"><h1>Create Purchase Request</h1><p className="muted">Estimated total dihitung otomatis dari quantity × estimated unit cost.</p><PurchaseCreateForm defaultDate={jakartaDate()}/></main>}

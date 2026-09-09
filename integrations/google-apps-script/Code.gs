@@ -1,4 +1,61 @@
 /** Google Forms/Sheets -> signed webhook. One project/configuration per source. */
+var DOPAMIN_ROW_KEY_HEADER_ = '__DOPAMIN_ROW_KEY';
+
+function sourceKey_(props) {
+  var key = required_(props, 'DOPAMIN_SOURCE_KEY').trim().toUpperCase();
+  if (['CASHIER', 'KITCHEN', 'BEVERAGE'].indexOf(key) < 0) throw new Error('DOPAMIN_SOURCE_KEY must be CASHIER, KITCHEN, or BEVERAGE');
+  return key;
+}
+
+function findRowKeyColumn_(sheet) {
+  var last = sheet.getLastColumn();
+  if (last < 1) return 0;
+  var found = 0;
+  sheet.getRange(1, 1, 1, last).getDisplayValues()[0].forEach(function(header, index) {
+    if (header === DOPAMIN_ROW_KEY_HEADER_) {
+      if (found) throw new Error('Duplicate Dopamin row key column');
+      found = index + 1;
+    }
+  });
+  return found;
+}
+
+/** Run once manually before triggers/backfill. Only integration metadata is written. */
+function initializeConfiguredSource() {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(5000);
+  try {
+    sourceKey_(PropertiesService.getScriptProperties());
+    var sheet = configuredSheet_();
+    var column = findRowKeyColumn_(sheet);
+    if (!column) {
+      column = sheet.getLastColumn() + 1;
+      if (column > sheet.getMaxColumns()) sheet.insertColumnAfter(sheet.getMaxColumns());
+      sheet.getRange(1, column).setValue(DOPAMIN_ROW_KEY_HEADER_);
+    }
+    sheet.hideColumns(column);
+    SpreadsheetApp.flush();
+    return { spreadsheetId: sheet.getParent().getId(), gid: sheet.getSheetId(), sheetName: sheet.getName(), rowKeyColumn: column };
+  } finally { lock.releaseLock(); }
+}
+
+function stableRowKey_(sheet, row, lockAlreadyHeld) {
+  // Backfill already owns this lock; live/replay must acquire it before assigning a key.
+  var lock = lockAlreadyHeld ? null : LockService.getScriptLock();
+  if (lock) lock.waitLock(5000);
+  try {
+    var column = findRowKeyColumn_(sheet);
+    if (!column) throw new Error('Dopamin row key column is missing. Run initializeConfiguredSource() first.');
+    var cell = sheet.getRange(row, column);
+    var existing = String(cell.getDisplayValue() || '').trim();
+    if (existing) return existing;
+    var key = Utilities.getUuid();
+    cell.setValue(key);
+    SpreadsheetApp.flush();
+    return key;
+  } finally { if (lock) lock.releaseLock(); }
+}
+
 function configuredSheet_() {
   var props = PropertiesService.getScriptProperties();
   var spreadsheet = SpreadsheetApp.openById(required_(props, 'DOPAMIN_SPREADSHEET_ID'));
@@ -11,7 +68,8 @@ function configuredSheet_() {
 /** Run manually to obtain exact configuration metadata; returns no response values/secrets. */
 function describeConfiguredSource() {
   var sheet = configuredSheet_();
-  return { spreadsheetId: sheet.getParent().getId(), gid: sheet.getSheetId(), sheetName: sheet.getName(), headers: sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0] };
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+  return { sourceKey: sourceKey_(PropertiesService.getScriptProperties()), spreadsheetId: sheet.getParent().getId(), gid: sheet.getSheetId(), sheetName: sheet.getName(), rowKeyColumn: findRowKeyColumn_(sheet), headers: headers.filter(function(header) { return header !== DOPAMIN_ROW_KEY_HEADER_; }) };
 }
 
 function onFormSubmit(e) {
@@ -41,13 +99,13 @@ function backfillRows() {
   try {
     var props = PropertiesService.getScriptProperties();
     var sheet = configuredSheet_();
-    var cursorKey = 'DOPAMIN_BACKFILL_NEXT_ROW_' + required_(props, 'DOPAMIN_SOURCE_KEY') + '_' + sheet.getParent().getId() + '_' + sheet.getSheetId();
+    var cursorKey = 'DOPAMIN_BACKFILL_NEXT_ROW_' + sourceKey_(props) + '_' + sheet.getParent().getId() + '_' + sheet.getSheetId();
     var next = Number(props.getProperty(cursorKey) || '2');
     if (!Number.isInteger(next) || next < 2) throw new Error('Invalid backfill cursor');
     var last = Math.min(sheet.getLastRow(), next + batchSize_(props) - 1);
     var started = Date.now();
     for (; next <= last && Date.now() - started < 240000; next++) {
-      sendRow_(sheet, next);
+      sendRow_(sheet, next, true);
       props.setProperty(cursorKey, String(next + 1));
       Utilities.sleep(200);
     }
@@ -55,14 +113,17 @@ function backfillRows() {
   } finally { lock.releaseLock(); }
 }
 
-function envelopeForRow_(sheet, row) {
+function envelopeForRow_(sheet, row, lockAlreadyHeld) {
   if (row < 2) throw new Error('Header row cannot be delivered');
   var props = PropertiesService.getScriptProperties();
   var values = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
-  if (values.every(function(value) { return value === ''; })) return null;
   var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+  var businessValues = values.filter(function(value, index) { return headers[index] !== DOPAMIN_ROW_KEY_HEADER_; });
+  if (businessValues.every(function(value) { return value === ''; })) return null;
+  var sourceKey = sourceKey_(props);
   var payload = Object.create(null);
   headers.forEach(function(header, i) {
+    if (header === DOPAMIN_ROW_KEY_HEADER_) return;
     if (!header.trim() || Object.prototype.hasOwnProperty.call(payload, header)) throw new Error('Blank or duplicate source header; resolve before ingestion');
     var value = values[i];
     // Both live and replay read the same typed cells. Business dates remain date-only.
@@ -71,17 +132,17 @@ function envelopeForRow_(sheet, row) {
   });
   if (!(values[0] instanceof Date) || isNaN(values[0].getTime())) throw new Error('Source timestamp in column 1 must be a valid date');
   return {
-    sourceKey: required_(props, 'DOPAMIN_SOURCE_KEY'),
+    sourceKey: sourceKey,
     spreadsheetId: sheet.getParent().getId(), sheetName: sheet.getName(),
-    // Existing contract: response sheets MUST remain append-only (no sort/insert/delete).
-    rowKey: String(row),
+    // UUID moves with the complete row, including this hidden metadata column.
+    rowKey: stableRowKey_(sheet, row, lockAlreadyHeld),
     submittedAt: Utilities.formatDate(values[0], 'Asia/Jakarta', "yyyy-MM-dd'T'HH:mm:ssXXX"),
     eventCreatedAt: new Date().toISOString(), payload: payload
   };
 }
 
-function sendRow_(sheet, row) {
-  var envelope = envelopeForRow_(sheet, row);
+function sendRow_(sheet, row, lockAlreadyHeld) {
+  var envelope = envelopeForRow_(sheet, row, lockAlreadyHeld);
   if (!envelope) return;
   var props = PropertiesService.getScriptProperties();
   var baseUrl = required_(props, 'DOPAMIN_BASE_URL').replace(/\/$/, '');

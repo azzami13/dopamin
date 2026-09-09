@@ -7,6 +7,7 @@ import { appError } from "@/lib/http/api";
 import { evaluateDailyClosing } from "@/modules/reporting/closing.service";
 import { normalizeCashier, normalizeSales } from "./normalizers";
 import { supersedeEarlierReports } from "./ingestion.service";
+import type { GoogleFormEnvelope, GoogleSourceKey } from "./types";
 
 export async function reprocessSubmission(actor: ActorContext, id: string, reason: string) {
   assertPermission(actor, Permission.SETTINGS_MANAGE);
@@ -21,6 +22,7 @@ export async function reprocessSubmission(actor: ActorContext, id: string, reaso
     if (latest.id !== id || !["ERROR", "NEEDS_REVIEW"].includes(raw.processingStatus)) throw appError("Only latest ERROR/NEEDS_REVIEW submissions may be reprocessed", 409, "REPROCESS_NOT_ALLOWED");
     const [source] = await tx.select().from(dataSources).where(eq(dataSources.id, raw.dataSourceId));
     if (!source?.isActive || !["CASHIER", "KITCHEN", "BEVERAGE"].includes(source.code)) throw appError("Source is inactive or unsupported", 409);
+    if (!source.spreadsheetId || !source.sheetName) throw appError("Google source configuration is incomplete", 409, "SOURCE_NOT_FULLY_CONFIGURED");
     // Snapshot every normalized row before rebuilding incomplete, uncorrected data.
     const before = await tx.execute(sql`
       select to_jsonb(cr) as report,
@@ -48,10 +50,11 @@ export async function reprocessSubmission(actor: ActorContext, id: string, reaso
     const linked = await tx.execute(sql`select id from fund_transactions where source_submission_id=${id}::uuid union all select id from journal_entries where source_id in (${sql.join(entities.map((entity) => sql`${entity}::uuid`), sql`, `)}) limit 1`);
     if (correction || linked.length) throw appError("Corrected or financially linked data cannot be rebuilt", 409, "REPROCESS_HISTORY_PROTECTED");
     await tx.update(dataIssues).set({ status: "RESOLVED", resolvedAt: new Date(), resolvedBy: actor.userId }).where(and(eq(dataIssues.sourceSubmissionId, id), eq(dataIssues.status, "OPEN")));
-    const envelope = { sourceKey: source.code, rowKey: raw.sourceRecordKey, submittedAt: raw.submittedAt.toISOString(), payload: raw.rawPayload };
-    const result = source.code === "CASHIER"
+    const sourceCode = source.code as GoogleSourceKey;
+    const envelope: GoogleFormEnvelope = { sourceKey: sourceCode, spreadsheetId: source.spreadsheetId, sheetName: source.sheetName, rowKey: raw.sourceRecordKey, submittedAt: raw.submittedAt.toISOString(), payload: raw.rawPayload };
+    const result = sourceCode === "CASHIER"
       ? await normalizeCashier({ dataSourceId: source.id, rawSubmissionId: id, envelope }, tx)
-      : await normalizeSales({ source: source.code as "KITCHEN" | "BEVERAGE", dataSourceId: source.id, rawSubmissionId: id, envelope }, tx);
+      : await normalizeSales({ source: sourceCode, dataSourceId: source.id, rawSubmissionId: id, envelope }, tx);
     // An invalid date has no replacement report; retain existing incomplete rows as review-only.
     await supersedeEarlierReports(tx, source.id, raw.sourceRecordKey, id);
     await tx.update(rawSubmissions).set({ processingStatus: result.status, businessDateDetected: result.businessDate }).where(eq(rawSubmissions.id, id));

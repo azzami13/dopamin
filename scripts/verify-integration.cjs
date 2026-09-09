@@ -52,14 +52,31 @@ async function main() {
   const props = { getProperty: (key) => propsMap.get(key), setProperty: (key, value) => propsMap.set(key, value) };
   let headers = ['Timestamp', 'Tanggal Pelaporan', 'Pembayaran Cash'];
   const values = [new Date('2026-09-09T05:00:00Z'), new Date('2026-09-08T17:00:00Z'), 25000];
-  const sheet = { getParent: () => spreadsheet, getSheetId: () => 42, getName: () => 'Test only', getLastRow: () => 4, getLastColumn: () => headers.length, getRange: () => ({ getValues: () => [values], getDisplayValues: () => [headers] }) };
+  const grid = new Map([[2, [...values]], [3, [...values]], [4, [...values]]]);
+  let writes = 0;
+  const sheet = {
+    getParent: () => spreadsheet, getSheetId: () => 42, getName: () => 'Test only',
+    getLastRow: () => 4, getLastColumn: () => headers.length, getMaxColumns: () => 4,
+    insertColumnAfter() {}, hideColumns(column) { assert.equal(column, 4); },
+    getRange(row, column, height = 1, width = 1) {
+      const read = () => Array.from({ length: height }, (_, offset) => {
+        const cells = row + offset === 1 ? headers : grid.get(row + offset) ?? [];
+        return Array.from({ length: width }, (_, index) => cells[column - 1 + index] ?? '');
+      });
+      return { getValues: read, getDisplayValues: () => read().map(cells => cells.map(String)),
+        getDisplayValue: () => String(read()[0][0]),
+        setValue(value) { const cells = row === 1 ? headers : grid.get(row); cells[column - 1] = value; writes++; }
+      };
+    }
+  };
   const spreadsheet = { getId: () => 'test-sheet', getSheets: () => [sheet] };
   const sent = [];
   let statuses = [];
+  let locked = false;
   const context = {
-    Date, PropertiesService: { getScriptProperties: () => props }, SpreadsheetApp: { openById: () => spreadsheet },
-    LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
-    Utilities: { Charset: { UTF_8: 'utf8' }, sleep() {}, formatDate: (date, zone, format) => {
+    Date, PropertiesService: { getScriptProperties: () => props }, SpreadsheetApp: { openById: () => spreadsheet, flush() {} },
+    LockService: { getScriptLock: () => ({ tryLock() { if (locked) return false; locked = true; return true; }, waitLock() { assert.equal(locked, false, 'Do not reacquire the backfill lock'); locked = true; }, releaseLock() { locked = false; } }) },
+    Utilities: { getUuid: () => crypto.randomUUID(), Charset: { UTF_8: 'utf8' }, sleep() {}, formatDate: (date, zone, format) => {
       assert.equal(zone, 'Asia/Jakarta');
       const local = new Date(date.getTime() + 7 * 3600000).toISOString();
       return format === 'yyyy-MM-dd' ? local.slice(0, 10) : local.slice(0, 19) + '+07:00';
@@ -74,14 +91,32 @@ async function main() {
   };
   vm.createContext(context);
   vm.runInContext(fs.readFileSync('integrations/google-apps-script/Code.gs', 'utf8'), context);
+  assert.throws(() => context.sendRow_(sheet, 2), /initializeConfiguredSource/);
+  context.initializeConfiguredSource();
+  context.initializeConfiguredSource();
+  assert.equal(headers.length, 4);
+  assert.equal(context.describeConfiguredSource().rowKeyColumn, 4);
+  assert.equal(context.describeConfiguredSource().headers.includes('__DOPAMIN_ROW_KEY'), false);
   context.onFormSubmit({ range: { getSheet: () => sheet, getRow: () => 2 }, namedValues: { 'Pembayaran Cash': ['25.000'] } });
   context.sendRow_(sheet, 2);
   assert.deepEqual(sent[0].payload, sent[1].payload);
   assert.equal(sent[0].payload['Tanggal Pelaporan'], '2026-09-09');
   assert.equal(sent[0].rowKey, sent[1].rowKey);
-  headers = ['Timestamp', 'Timestamp', 'Cash'];
+  assert.match(sent[0].rowKey, /^[0-9a-f-]{36}$/);
+  assert.equal('__DOPAMIN_ROW_KEY' in sent[0].payload, false);
+  const row2 = grid.get(2), row3 = grid.get(3);
+  grid.set(3, row2); grid.set(2, row3);
+  assert.equal(context.envelopeForRow_(sheet, 3).rowKey, sent[0].rowKey);
+  assert.notEqual(context.envelopeForRow_(sheet, 2).rowKey, sent[0].rowKey);
+  const previousWrites = writes;
+  context.envelopeForRow_(sheet, 2);
+  assert.equal(writes, previousWrites);
+  grid.set(4, ['', '', '', crypto.randomUUID()]);
+  assert.equal(context.envelopeForRow_(sheet, 4), null);
+  grid.set(4, [...values]);
+  headers = ['Timestamp', 'Timestamp', 'Cash', '__DOPAMIN_ROW_KEY'];
   assert.throws(() => context.sendRow_(sheet, 2), /duplicate/);
-  headers = ['Timestamp', 'Tanggal Pelaporan', 'Pembayaran Cash'];
+  headers = ['Timestamp', 'Tanggal Pelaporan', 'Pembayaran Cash', '__DOPAMIN_ROW_KEY'];
   statuses = [500, 201];
   const count = sent.length;
   context.sendRow_(sheet, 2);
@@ -94,7 +129,27 @@ async function main() {
   assert.equal(propsMap.get(cursor), '4');
   context.backfillRows();
   assert.equal(propsMap.get(cursor), '5');
-  console.log('PASS: sales SQL/role scope, HMAC, live/replay payload parity, date serialization, header validation, retry and backfill cursor.');
+  propsMap.set('DOPAMIN_SOURCE_KEY', ' cashier ');
+  assert.equal(context.envelopeForRow_(sheet, 2).sourceKey, 'CASHIER');
+  propsMap.set('DOPAMIN_SOURCE_KEY', 'CASHIER_WRONG');
+  assert.throws(() => context.envelopeForRow_(sheet, 2), /must be/);
+  for (const fail of [false, true]) {
+    const health = loadTs('src/app/api/health/route.ts', {
+      '@/db/client': { db: { execute: async () => { if (fail) throw new Error('sensitive-db-detail'); return []; } } },
+      'next/server': { NextResponse: { json: (data, init) => Response.json(data, init) } },
+    });
+    const response = await health.GET();
+    assert.equal(response.status, fail ? 503 : 200);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    const body = await response.text();
+    assert.equal(body.includes('sensitive-db-detail'), false);
+    assert.equal('error' in JSON.parse(body), false);
+  }
+  const types = loadTs('src/modules/integration/types.ts');
+  const envelope = { sourceKey: 'CASHIER', spreadsheetId: 'test', sheetName: ' Exact Sheet ', rowKey: 'uuid', submittedAt: '2026-09-10T00:00:00Z', payload: {} };
+  assert.equal(types.googleFormEnvelopeSchema.parse(envelope).sheetName, ' Exact Sheet ');
+  for (const change of [{ spreadsheetId: undefined }, { sheetName: undefined }, { sourceKey: 'CASHIER_WRONG' }]) assert.equal(types.googleFormEnvelopeSchema.safeParse({ ...envelope, ...change }).success, false);
+  console.log('PASS: sales scope, HMAC, required source config schema, stable UUID across row moves/replay, internal-column exclusion, lock safety, retry/cursor, and health response privacy/no-store.');
 }
 
 if (require.main === module) main().catch((error) => { console.error('INTEGRATION REGRESSION FAILED', error); process.exitCode = 1; });

@@ -160,7 +160,7 @@ Current repository baseline:
 - **Google Apps Script** for Form/Sheet webhook, reconciliation replay, scheduler heartbeat, and MailApp delivery
 - PWA manifest + service worker
 
-> Dependencies are installed and `package-lock.json` is tracked. The installed baseline uses Next.js 16.3.4 and Auth.js/NextAuth v5. Most package.json ranges still use `latest`; use the lockfile for reproducible installs and review pinning separately. Preserve the working Auth.js v5 flow.
+> Dependencies are installed and `package-lock.json` is tracked. The installed baseline uses Next.js 16.3.4 and Auth.js/NextAuth v5. All direct dependencies/devDependencies are pinned to the installed lockfile versions; use `npm ci` for reproducible installs. Preserve the working Auth.js v5 flow.
 
 ---
 
@@ -403,6 +403,10 @@ Money uses PostgreSQL `NUMERIC(18,2)`; quantities use `NUMERIC(18,3)`.
   - `user_source_aliases`
   - source identity mapping hardening
 
+- `0002_raw_submission_revision_hardening.sql`
+  - supports payload reversion A -> B -> A by retaining unique revision identity and using a nonunique payload lookup index
+  - applied alone to existing Neon on 2026-09-10; bootstrap was not rerun
+
 ### Reporting views
 
 - `vw_daily_sales_summary`
@@ -476,11 +480,11 @@ OPEX historical import is represented in the data model/design but is not treate
 
 The ingestion service hashes the raw payload.
 
-- same source + same row key + same payload hash → idempotent/no duplicate
-- same row key + changed payload → a new raw revision is inserted
+- same source + same row key + same payload hash as the latest revision → idempotent/no duplicate
+- same row key + changed payload (including A -> B -> A) → a new raw revision is inserted
 - previous revisions are superseded atomically with successful normalization; failures retain raw ERROR evidence and flag earlier current reports NEEDS_REVIEW
 
-The original raw payload is retained in JSONB. Per-source transaction locks serialize ingestion/reprocess/correction. Apps Script uses identical live/replay payloads and supports bounded checkpointed `backfillRows()`. See [setup and exact blockers](integrations/google-apps-script/README.md).
+The original raw payload is retained in JSONB. Per-source transaction locks serialize ingestion/reprocess/correction. Apps Script now uses persisted UUIDs in a hidden internal column instead of permanent row-number identity. Apps Script uses identical live/replay payloads and supports bounded checkpointed `backfillRows()`. See [setup and exact blockers](integrations/google-apps-script/README.md).
 
 ### Source field mappings
 
@@ -923,7 +927,7 @@ Recommended:
 npm install
 ```
 
-The current workspace already has installed dependencies and a tracked lockfile. Use `npm ci` for a fresh reproducible installation; typecheck and production build pass. Review unbounded dependency ranges separately.
+The current workspace already has installed dependencies and a tracked lockfile. Use `npm ci` for a fresh reproducible installation; typecheck and production build pass. Direct dependency versions are pinned to the verified lockfile baseline.
 
 ### Step 2 — configure environment
 
@@ -1157,7 +1161,7 @@ It checks:
 
 ---
 
-## 28. Current verification status - 2026-09-09
+## 28. Current verification status - 2026-09-10
 
 Stakeholder-verified before this task: npm install, dependencies, PostgreSQL bootstrap, DB smoke (40 tables/7 views), Neon connectivity, Owner bootstrap, Auth.js v5 Google OAuth, Owner login/dashboard, typecheck and production build. Bootstrap and OAuth setup were not repeated here.
 
@@ -1168,10 +1172,11 @@ Verified again in this session:
 - Static artifacts/imports: PASS; optional global syntax-parser step skipped.
 - All three actual sales overview queries execute against Neon with DB Owner permission and return empty results for an empty interval. Local tests preserve all five role scopes.
 - `/api/health`: 200. Unauthenticated dashboard/sales/cashier/finance: 307 to login. Unsigned webhook: 401.
-- Synthetic DB regression: PASS for idempotent replay, mapping reprocess, permission denial, changed-row supersession, raw retention, normalization failure savepoint and audit. All fixtures were rolled back; this is not actual Google ingestion.
+- Synthetic DB regression (2026-09-10): PASS for A -> B -> A -> A revision/replay, temporary Google configuration and explicit Business Date mapping, mapping reprocess, permission denial, changed-row supersession, raw retention, normalization failure savepoint and audit. All fixtures were rolled back; this is not actual Google ingestion.
+- Health responses use no-store on success/failure and never expose DB error messages.
 - Local HMAC and Apps Script mocks: payload parity, business date serialization, headers, retry and cursor tests pass.
 
-npm script wrappers could not launch in this shell (execution policy / command-shell launcher). Equivalent installed entry points were used: `node node_modules/typescript/bin/tsc --noEmit`, `node node_modules/next/dist/bin/next build`, and `node --experimental-strip-types scripts/db-smoke.ts`. Database checks required network-enabled execution. No dependency/auth/secret changes were made.
+npm script wrappers could not launch in this shell (execution policy / command-shell launcher). Equivalent installed entry points were used: `node node_modules/typescript/bin/tsc --noEmit`, `node node_modules/next/dist/bin/next build`, and `node --experimental-strip-types scripts/db-smoke.ts`. Database checks required network-enabled execution. Direct dependency ranges and root lockfile metadata were pinned to existing installed versions; no package upgrades, auth refactor or secret changes were made.
 
 Authenticated Owner browser pages were NOT RETESTED here. The real `/sales` query regression is verified, but browser OAuth UAT was not repeated. Actual Google Sheet ingestion and MailApp delivery remain NOT TESTED. This is not production-ready.
 

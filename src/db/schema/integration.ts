@@ -40,7 +40,7 @@ export const rawSubmissions = pgTable("raw_submissions", {
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 }, (t) => [
   uniqueIndex("raw_submissions_source_revision_uq").on(t.dataSourceId, t.sourceRecordKey, t.sourceRevision),
-  uniqueIndex("raw_submissions_payload_uq").on(t.dataSourceId, t.sourceRecordKey, t.payloadHash),
+  index("raw_submissions_payload_idx").on(t.dataSourceId, t.sourceRecordKey, t.payloadHash),
   index("raw_submissions_processing_idx").on(t.processingStatus, t.firstSeenAt),
   check("raw_submissions_revision_ck", sql`${t.sourceRevision} >= 1`),
   check("raw_submissions_status_ck", sql`${t.processingStatus} in ('RECEIVED','PROCESSING','VALID','NEEDS_REVIEW','ERROR','SUPERSEDED')`),

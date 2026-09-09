@@ -48,6 +48,18 @@ Install, bootstrap and Owner OAuth/login were verified by the stakeholder before
 - [ ] server-side permission tests for finance/settings/audit
 - [ ] own-source Cashier/Kitchen tests
 
+## Revision / UUID hardening - 2026-09-10
+
+- [x] Direct dependency versions pinned to existing lockfile
+- [x] Migration 0002 applied alone to existing Neon; raw rows and unique revision identity retained
+- [x] Typecheck and full production build after mandatory-envelope changes
+- [x] DB smoke allows nonadjacent payload repetition
+- [x] Neon rollback regression: A -> B -> A creates revision 3; next A is idempotent
+- [x] Local UUID initialization/reuse/row-move/internal-column/lock tests
+- [x] Local health success/error tests: no DB detail, no-store
+- [ ] Manual Google UUID-column initialization and full-row-sort UAT
+- [ ] Reconcile any legacy numeric row keys before switching an already-imported source
+
 ## Local regression evidence
 
 - [x] Empty sales interval executes all three real PostgreSQL queries

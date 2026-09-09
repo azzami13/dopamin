@@ -49,8 +49,12 @@ async function main() {
         assert.ok(owner);
         const actor = { userId: owner.id, role: 'OWNER', permissions: ['SETTINGS_MANAGE', 'CORRECTION_CREATE'] };
         const [source] = await tx.select().from(schema.dataSources).where(eq(schema.dataSources.code, 'CASHIER'));
+        const testSpreadsheetId = 'test-spreadsheet-' + randomUUID();
+        const testSheetName = 'TEST CASHIER ' + randomUUID();
+        await tx.update(schema.dataSources).set({ spreadsheetId: testSpreadsheetId, sheetName: testSheetName }).where(eq(schema.dataSources.id, source.id));
+        await tx.insert(schema.sourceFieldMappings).values({ dataSourceId: source.id, sourceFieldName: 'Tanggal Pelaporan', mappingType: 'BUSINESS_DATE', targetKey: 'BUSINESS_DATE', mappingVersion: 1, isActive: true }).onConflictDoUpdate({ target: [schema.sourceFieldMappings.dataSourceId, schema.sourceFieldMappings.sourceFieldName, schema.sourceFieldMappings.mappingVersion], set: { mappingType: 'BUSINESS_DATE', targetKey: 'BUSINESS_DATE', isActive: true } });
         const key = 'test-' + randomUUID();
-        const envelope = { sourceKey: 'CASHIER', spreadsheetId: source.spreadsheetId || undefined, sheetName: source.sheetName || undefined, rowKey: key, submittedAt: '2099-01-01T12:00:00+07:00', payload: { 'Tanggal Pelaporan': '2099-01-01', [key]: 12000 } };
+        const envelope = { sourceKey: 'CASHIER', spreadsheetId: testSpreadsheetId, sheetName: testSheetName, rowKey: key, submittedAt: '2099-01-01T12:00:00+07:00', payload: { 'Tanggal Pelaporan': '2099-01-01', [key]: 12000 } };
         console.log('Checking initial ingestion...');
         const first = await ingestGoogleForm(envelope, key);
         assert.equal(first.status, 'NEEDS_REVIEW');
@@ -71,6 +75,19 @@ async function main() {
         assert.equal(oldReport.reportStatus, 'SUPERSEDED');
         const [oldRaw] = await tx.select().from(schema.rawSubmissions).where(eq(schema.rawSubmissions.id, first.rawSubmissionId));
         assert.deepEqual(oldRaw.rawPayload, envelope.payload);
+        console.log('Checking payload reversion creates a new revision...');
+        const reverted = await ingestGoogleForm({ ...envelope, payload: { ...envelope.payload, [key]: 12000 } }, key);
+        assert.equal(reverted.revision, 3);
+        assert.equal(reverted.idempotent, false);
+        assert.notEqual(reverted.rawSubmissionId, first.rawSubmissionId);
+        const [latestRevision] = await tx.select().from(schema.rawSubmissions).where(eq(schema.rawSubmissions.id, reverted.rawSubmissionId));
+        assert.equal(latestRevision.sourceRevision, 3);
+        assert.equal(latestRevision.supersedesSubmissionId, changed.rawSubmissionId);
+        assert.deepEqual(latestRevision.rawPayload, envelope.payload);
+        const replayReverted = await ingestGoogleForm(envelope, key);
+        assert.equal(replayReverted.idempotent, true);
+        assert.equal(replayReverted.rawSubmissionId, reverted.rawSubmissionId);
+        console.log('Payload reversion revision passed.');
         console.log('Checking obsolete revision guard...');
         await assert.rejects(() => reprocessSubmission(actor, first.rawSubmissionId, 'test'), { status: 409 });
         console.log('Obsolete revision guard passed.');
@@ -80,17 +97,17 @@ async function main() {
         assert.equal(failed.status, 'ERROR');
         const [failedRaw] = await tx.select().from(schema.rawSubmissions).where(eq(schema.rawSubmissions.id, failed.rawSubmissionId));
         assert.equal(failedRaw.rawPayload.Cashier.length, 200);
-        const [retained] = await tx.select().from(schema.cashierReports).where(eq(schema.cashierReports.sourceSubmissionId, changed.rawSubmissionId));
+        const [retained] = await tx.select().from(schema.cashierReports).where(eq(schema.cashierReports.sourceSubmissionId, reverted.rawSubmissionId));
         assert.equal(retained.reportStatus, 'NEEDS_REVIEW');
         const partial = await tx.select().from(schema.cashierReports).where(eq(schema.cashierReports.sourceSubmissionId, failed.rawSubmissionId));
         assert.equal(partial.length, 0);
         const audit = await tx.select().from(schema.auditLogs).where(and(eq(schema.auditLogs.entityId, first.rawSubmissionId), eq(schema.auditLogs.action, 'REPROCESS')));
         assert.equal(audit.length, 1);
-        console.log('PASS: idempotent replay, mapping reprocess, RBAC denial, changed-row supersession, raw retention, failure savepoint, review-only previous report, reprocess audit. Rolling back all fixtures.');
+        console.log('PASS: A -> B -> A -> A revision/replay, temporary source configuration, idempotent replay, mapping reprocess, RBAC denial, changed-row supersession, raw retention, failure savepoint, review-only previous report, reprocess audit. Rolling back all fixtures.');
         throw rollback;
       });
     } catch (error) { if (error !== rollback) throw error; }
   } finally { await client.end(); }
 }
-const watchdog = setTimeout(() => { console.error('INGESTION DB REGRESSION TIMEOUT'); process.exit(1); }, 180000);
+const watchdog = setTimeout(() => { console.error('INGESTION DB REGRESSION TIMEOUT'); process.exit(1); }, 300000);
 main().finally(() => clearTimeout(watchdog)).catch((error) => { console.error('INGESTION DB REGRESSION FAILED:', error.code || error.name, error.message, error.cause?.code || ''); process.exitCode = 1; });

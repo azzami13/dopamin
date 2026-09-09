@@ -149,27 +149,18 @@ async function main() {
       );
     }
 
-    const duplicateRaw = await count(sql`
-      select count(*)
-      from (
-        select
-          data_source_id,
-          source_record_key,
-          payload_hash,
-          count(*) as c
+    const duplicateAdjacentRaw = await count(sql`
+      select count(*) from (
+        select payload_hash,
+          lag(payload_hash) over (
+            partition by data_source_id, source_record_key
+            order by source_revision
+          ) as previous_payload_hash
         from raw_submissions
-        group by
-          data_source_id,
-          source_record_key,
-          payload_hash
-        having count(*) > 1
-      ) x
+      ) x where payload_hash = previous_payload_hash
     `);
-
-    if (duplicateRaw) {
-      throw new Error(
-        `Duplicate raw payload identities: ${duplicateRaw}`
-      );
+    if (duplicateAdjacentRaw) {
+      throw new Error(`Adjacent duplicate raw revisions: ${duplicateAdjacentRaw}`);
     }
 
     const overlappingPrices = await count(sql`

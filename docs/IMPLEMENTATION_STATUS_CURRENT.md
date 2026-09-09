@@ -1,4 +1,4 @@
-# Current Implementation Status — 2026-09-09
+# Current Implementation Status — 2026-09-10
 
 ## Status legend
 
@@ -97,24 +97,28 @@ Stakeholder verified before this task: npm install/dependencies, fresh bootstrap
 | Static artifacts/imports | PASS; optional global syntax parser skipped |
 | Sales overview SQL | PASS: all three actual queries in Neon with DB Owner permission; empty interval returns empty results |
 | Five sales role scopes | PASS locally; own-source predicate retained |
-| HMAC / Apps Script mocks | PASS: signing, expiry, payload parity, dates, headers, retry/cursor |
-| Synthetic DB ingestion/reprocess | PASS: replay, mapping rebuild, permission denial, supersession, raw retention, failure savepoint and audit; all fixtures rolled back |
-| `/api/health` | PASS, HTTP 200 |
+| HMAC / Apps Script mocks | PASS: UUID initialization/reuse across row movement, internal-column exclusion, lock reuse, required source schema, health error privacy/no-store, signing, expiry, payload parity, dates, headers, retry/cursor |
+| Synthetic DB ingestion/reprocess | PASS on 2026-09-10: A -> B -> A creates revision 3 with a new ID; subsequent A is idempotent; temporary Google config and Business Date mapping are rolled back; replay, mapping rebuild, permission denial, supersession, raw retention, failure savepoint and audit; all fixtures rolled back |
+| `/api/health` | PASS on 2026-09-10, live production build HTTP 200/no-store; error-detail suppression also unit-tested |
 | Protected routes | PASS: dashboard/sales/cashier/finance redirect to login without session |
 | Unsigned webhook | PASS, HTTP 401 |
 | Authenticated Owner pages | NOT RETESTED; prior stakeholder verification retained |
 | Actual Google Sheet / MailApp | NOT TESTED |
 
-npm wrappers failed to launch in this shell. Equivalent installed package entry points were run directly; DB checks needed network-enabled execution. No dependency/auth/secret changes, bootstrap rerun, migration, table/view definition changes or production deployment were performed.
+npm wrappers failed to launch in this shell. Equivalent installed package entry points were run directly; DB checks needed network-enabled execution. Direct dependency versions and root lockfile metadata are pinned to installed versions. Migration 0002 was applied alone to existing Neon on 2026-09-10: historical payload uniqueness was replaced with a nonunique index, retaining revision uniqueness. No raw rows, views, auth flow or secrets were changed; no bootstrap rerun or production deployment occurred.
 
 ## Integration readiness
 
+Source configuration is mandatory for both webhook ingestion and reprocess. Latest-only idempotency supports A -> B -> A as three revisions and treats another current A as replay. DB smoke now detects adjacent duplicate hashes rather than valid historical repetitions.
+
 The real DB has active CASHIER/KITCHEN/BEVERAGE sources, but Spreadsheet IDs/names are unset and there are zero active mappings/aliases. Supplied IDs/gids, exact missing information and setup instructions are centralized in `integrations/google-apps-script/README.md`. No live source configuration was changed.
 
-Apps Script selects the configured gid, uses identical typed-cell payloads for live/replay, and supports bounded checkpointed backfill. Row-number identity requires append-only response tabs; sorting/inserting/deleting rows requires a persistent-identity migration. A metadata-only helper obtains exact sheet names/headers after manual Google setup.
+Apps Script selects the configured gid, uses identical typed-cell payloads for live/replay, and supports bounded checkpointed backfill. Row identity is now a persisted UUID in hidden `__DOPAMIN_ROW_KEY`; original response fields remain untouched. Sorting/moving must include the full row and UUID. Previously imported numeric row keys require reconciliation before switching; pause/restart positional backfill after reordering. A metadata-only helper obtains exact sheet names/headers after manual Google setup.
 
 Reprocess is restricted to incomplete, uncorrected, nonfinancial normalized rows. It preserves raw JSON/hash/revision and report IDs, audits prior normalized child values, regenerates issues/closings transactionally and rolls back on failure. Existing correction writes use the same source lock. General correction authorization review, raw overlays, mapping administration/version-attempt history and Sales Clearing reversal/repost remain backlog.
 
 Not production-ready: actual-source setup/UAT, unresolved accounting policies, backup/restore, PWA UAT and deployment gates remain open.
 
 The DB regression uses one owned rollback transaction instead of nesting service transaction wrappers inside a test transaction. Early harness attempts timed out; the final bounded run passed. Tagged abandoned test sessions were closed/rolled back. Concurrent multi-connection races are not covered by this synthetic test.
+
+Post-test read-only checks on 2026-09-10 found zero legacy numeric row keys and zero temporary source configurations. Local Google Apps Script remains undeployed; initialize its internal UUID column manually before triggers/backfill. `next-env.d.ts` was generated by Next.js build, not patched manually in this task.

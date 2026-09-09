@@ -68,8 +68,51 @@ function configuredSheet_() {
 /** Run manually to obtain exact configuration metadata; returns no response values/secrets. */
 function describeConfiguredSource() {
   var sheet = configuredSheet_();
-  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
-  return { sourceKey: sourceKey_(PropertiesService.getScriptProperties()), spreadsheetId: sheet.getParent().getId(), gid: sheet.getSheetId(), sheetName: sheet.getName(), rowKeyColumn: findRowKeyColumn_(sheet), headers: headers.filter(function(header) { return header !== DOPAMIN_ROW_KEY_HEADER_; }) };
+
+  var headers = sheet
+    .getRange(
+      1,
+      1,
+      1,
+      sheet.getLastColumn()
+    )
+    .getDisplayValues()[0];
+
+  var result = {
+    sourceKey: sourceKey_(
+      PropertiesService.getScriptProperties()
+    ),
+
+    spreadsheetId: sheet
+      .getParent()
+      .getId(),
+
+    gid: sheet.getSheetId(),
+
+    sheetName: sheet.getName(),
+
+    rowKeyColumn:
+      findRowKeyColumn_(sheet),
+
+    headers: headers.filter(
+      function(header) {
+        return (
+          header !==
+          DOPAMIN_ROW_KEY_HEADER_
+        );
+      }
+    )
+  };
+
+  console.log(
+    JSON.stringify(
+      result,
+      null,
+      2
+    )
+  );
+
+  return result;
 }
 
 function onFormSubmit(e) {
@@ -83,6 +126,36 @@ function batchSize_(props) {
   var count = Number(props.getProperty('DOPAMIN_REPLAY_ROWS') || '50');
   if (!Number.isInteger(count) || count < 1 || count > 100) throw new Error('DOPAMIN_REPLAY_ROWS must be 1..100');
   return count;
+}
+
+function sendLastRowForTest() {
+  var sheet =
+    configuredSheet_();
+
+  var row =
+    sheet.getLastRow();
+
+  if (row < 2) {
+    throw new Error(
+      'Tidak ada data untuk diuji.'
+    );
+  }
+
+  var result =
+    sendRow_(
+      sheet,
+      row
+    );
+
+  console.log(
+    JSON.stringify(
+      result,
+      null,
+      2
+    )
+  );
+
+  return result;
 }
 
 function replayRecentRows() {

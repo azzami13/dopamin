@@ -1,6 +1,6 @@
 import Decimal from "decimal.js";
 import { requireActor } from "@/lib/auth/authorization";
-import { jakartaDate } from "@/lib/time/business-date";
+import { resolveDashboardDate } from "@/lib/time/default-business-date";
 import { getDashboardSnapshot } from "@/modules/dashboard/dashboard-query.service";
 
 function idr(value: string) {
@@ -14,7 +14,7 @@ function Badge({ ok, children }: { ok: boolean; children: React.ReactNode }) {
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
   const actor = await requireActor();
   const search = await searchParams;
-  const businessDate = /^\d{4}-\d{2}-\d{2}$/.test(search.date ?? "") ? search.date! : jakartaDate();
+  const businessDate = await resolveDashboardDate(search.date);
   const data = await getDashboardSnapshot(actor, businessDate);
   const m = data.metrics;
   const difference = new Decimal(m.productSalesTotal).minus(m.cashierInflow).toFixed(2);
@@ -41,7 +41,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         </div>
         <form className="date-filter" method="get">
           <label htmlFor="date">Business Date</label>
-          <input id="date" name="date" type="date" defaultValue={businessDate} />
+          <input key={businessDate} id="date" name="date" type="date" defaultValue={businessDate} />
           <button className="primary-button" type="submit">Terapkan</button>
         </form>
       </header>

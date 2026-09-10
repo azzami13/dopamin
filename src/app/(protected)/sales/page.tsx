@@ -1,15 +1,14 @@
 import Link from "next/link";
 import { requirePermission } from "@/lib/auth/authorization";
 import { Permission } from "@/lib/auth/permissions";
-import { jakartaDate } from "@/lib/time/business-date";
+import { resolveReportDateRange } from "@/lib/time/default-business-date";
 import { getSalesOverview } from "@/modules/sales/sales-query.service";
 
-const dateValue = (value: string | undefined, fallback: string) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? "") ? value! : fallback;
 const idr = (value: unknown) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number(value ?? 0));
 
 export default async function SalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const actor = await requirePermission(Permission.SALES_VIEW);
-  const q = await searchParams; const today = jakartaDate(); const from = dateValue(q.from, today); const to = dateValue(q.to, today);
+  const { from, to } = await resolveReportDateRange('sales', actor, await searchParams);
   const data = await getSalesOverview(actor, from, to);
   const summary = data.summary as Array<Record<string, unknown>>;
   return <main className="page-shell">

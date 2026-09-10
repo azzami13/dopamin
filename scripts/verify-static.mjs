@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process";
 
 const root = process.cwd();
 const required = [
+  "src/lib/time/default-business-date.ts",
   "src/db/migrations/0004_access_requests.sql", "src/modules/settings/access-request.service.ts",
   "src/app/api/settings/access-requests/route.ts", "src/components/settings/access-request-manager.tsx",
   "src/app/(auth)/access-pending/page.tsx", "src/app/(auth)/auth-error/page.tsx",

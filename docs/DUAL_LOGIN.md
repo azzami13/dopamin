@@ -46,3 +46,10 @@ npm run verify:auth:db
 The auth regression checks policy, bcrypt comparisons, lock duration/expiry, preserved Google allowlisting, session invalidation, forced-change authorization and endpoint origin/identity handling. The database regression creates a synthetic user, exercises the real password service and checks audit metadata; all fixtures are rolled back. Browser Google consent/callback and real-user interactive acceptance still require UAT. No existing user's password is changed by tests.
 
 Implementation references: [Auth.js Credentials provider](https://authjs.dev/getting-started/authentication/credentials), [bcryptjs input limits](https://github.com/dcodeIO/bcrypt.js).
+
+
+### Temporary Google OWNER access
+
+Set `GOOGLE_TEMPORARY_OWNER_ACCESS=true` to automatically create an OWNER for a previously unregistered, verified Google email. New accounts see a five-second welcome transition before the dashboard. Existing roles and inactive accounts are preserved. Creation is recorded as `GOOGLE_OWNER_AUTO_GRANTED` in the audit log. No password is created.
+
+This mode grants every new Google user access to all OWNER features and data. Set the flag to `false` and restart/redeploy to restore the normal access-request flow. Disabling it does not revoke OWNER accounts already created; manage those accounts separately. Existing pending requests remain as history and can be rejected by an administrator.

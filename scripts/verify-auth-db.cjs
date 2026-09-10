@@ -104,6 +104,23 @@ async function main() {
       const [pendingAgain] = (await access.listAccessRequests({ ...reviewer, role: 'DIRECTOR' })).requests.filter(r => r.email === rejectedEmail);
       await access.reviewAccessRequest({ ...reviewer, role: 'DIRECTOR' }, { id: pendingAgain.id, decision: 'APPROVED', roleId: role.id });
       console.log('ACCESS REQUEST DB REGRESSION PASSED: pending deduplication, Owner/Director approval, role enforcement, rejection, Google identity and normalized uniqueness.');
+      const temporary = load('src/lib/auth/temporary-google-access.ts');
+      const temporaryEmail = 'temporary-' + id + '@example.invalid';
+      process.env.GOOGLE_TEMPORARY_OWNER_ACCESS = 'false';
+      assert.equal(await temporary.provisionTemporaryGoogleOwner(temporaryEmail, 'Temporary'), false);
+      process.env.GOOGLE_TEMPORARY_OWNER_ACCESS = 'true';
+      assert.equal(await temporary.provisionTemporaryGoogleOwner(temporaryEmail, 'Temporary'), true);
+      assert.equal((await identity.findActiveActorByEmail(temporaryEmail)).role, 'OWNER');
+      const [temporaryUser] = await tx.select().from(schema.users).where(eq(schema.users.email, temporaryEmail));
+      assert.equal(temporaryUser.passwordHash, null);
+      assert.equal(await temporary.provisionTemporaryGoogleOwner(temporaryEmail.toUpperCase(), 'Again'), false);
+      await tx.update(schema.users).set({ isActive: false }).where(eq(schema.users.id, temporaryUser.id));
+      assert.equal(await temporary.provisionTemporaryGoogleOwner(temporaryEmail, 'Inactive'), false);
+      assert.equal(await identity.findActiveActorByEmail(temporaryEmail), null);
+      const grants = await tx.select().from(schema.auditLogs).where(eq(schema.auditLogs.entityId, temporaryUser.id));
+      assert.equal(grants.length, 1);
+      assert.equal(grants[0].action, 'GOOGLE_OWNER_AUTO_GRANTED');
+      console.log('TEMPORARY GOOGLE OWNER REGRESSION PASSED: toggle, role, deduplication, inactive account, audit.');
       throw rollback;
     });
   } catch (error) { if (error !== rollback) throw error; }

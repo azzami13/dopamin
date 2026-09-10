@@ -6,7 +6,7 @@ import { signIn } from "@/auth";
 
 async function startGoogleLogin(selectAccount: boolean) {
   try {
-    await signIn("google", { redirectTo: "/dashboard" }, selectAccount ? { prompt: "select_account" } : undefined);
+    await signIn("google", { redirectTo: process.env.GOOGLE_TEMPORARY_OWNER_ACCESS === "true" ? "/verify-access" : "/dashboard" }, selectAccount ? { prompt: "select_account" } : undefined);
   } catch (error) {
     if (error instanceof AuthError) redirect("/auth-error");
     throw error; // Keep the successful OAuth redirect intact.

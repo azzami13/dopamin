@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
+import { provisionTemporaryGoogleOwner } from "@/lib/auth/temporary-google-access";
 import { requestGoogleAccess } from "@/modules/settings/access-request.service";
 import { authenticatePassword, credentialSessionIsCurrent } from "@/lib/auth/password-service";
 
@@ -52,6 +53,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (!actor && account?.provider === "google") {
         if (profile?.email_verified !== true) return "/auth-error";
         try {
+          if (process.env.GOOGLE_TEMPORARY_OWNER_ACCESS === "true") {
+            user.temporaryGoogleOnboarding = await provisionTemporaryGoogleOwner(user.email, user.name);
+            return Boolean(await findActiveActorByEmail(user.email)) || "/access-pending";
+          }
           const result = await requestGoogleAccess(user.email, user.name);
           return result === 'PENDING' ? "/access-pending?status=pending" : "/access-pending";
         } catch { return "/auth-error"; }
@@ -61,6 +66,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
     async jwt({ token, user, account }) {
       if (account) {
+        token.temporaryGoogleOnboarding = account.provider === "google" && user?.temporaryGoogleOnboarding === true;
         token.loginMethod = account.provider;
         if (account.provider === "credentials" && user && "credentialVersion" in user) {
           token.credentialVersion = user.credentialVersion;
@@ -84,7 +90,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return token;
     },
 
-    async session({ session }) {
+    async session({ session, token }) {
+      session.temporaryGoogleOnboarding = token.temporaryGoogleOnboarding === true;
       if (!session.user?.email) {
         return session;
       }

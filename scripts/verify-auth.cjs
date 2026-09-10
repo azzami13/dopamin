@@ -25,12 +25,14 @@ async function main() {
   }
   assert.equal(state.lockedUntil.getTime() - now.getTime(), 900000);
   assert.equal(password.failedAttempt(state, new Date(now.getTime() + 900001)).failedLoginAttempts, 1);
+  delete process.env.GOOGLE_TEMPORARY_OWNER_ACCESS;
   let config;
   let actor = { userId: 'fixture', fullName: 'Fixture', mustChangePassword: true };
   let current = true;
   let requestResult = 'PENDING';
   const accessCalls = [];
   load('src/auth.ts', {
+    '@/lib/auth/temporary-google-access': { provisionTemporaryGoogleOwner: async () => { actor = { userId: 'new', fullName: 'New Owner' }; return true; } },
     'next-auth': options => { config = options; return {}; },
     'next-auth/providers/google': options => ({ id: 'google', ...options }),
     'next-auth/providers/credentials': options => ({ id: 'credentials', ...options }),
@@ -42,7 +44,7 @@ async function main() {
   assert.equal(config.pages.error, '/auth-error');
   assert.equal(await config.callbacks.signIn({ user: { email: 'fixture@example.invalid' }, account: { provider: 'google' } }), true);
   assert.equal(await config.callbacks.signIn({ user: { email: 'fixture@example.invalid' } }), true);
-  const session = await config.callbacks.session({ session: { user: { email: 'fixture@example.invalid' } } });
+  const session = await config.callbacks.session({ session: { user: { email: 'fixture@example.invalid' } }, token: {} });
   assert.deepEqual(Object.keys(session.user).sort(), ['email', 'name']);
   actor = null;
   assert.equal(accessCalls.length, 0);
@@ -58,6 +60,14 @@ async function main() {
   assert.equal(await config.callbacks.signIn({ user: {}, account: { provider: 'google' } }), '/access-pending');
   assert.equal(await config.callbacks.signIn({ user: { email: 'fixture@example.invalid' }, account: { provider: 'credentials' } }), false);
   assert.equal(await config.callbacks.signIn({ user: { email: 'fixture@example.invalid' } }), false);
+  process.env.GOOGLE_TEMPORARY_OWNER_ACCESS = 'true';
+  assert.equal(await config.callbacks.signIn({ ...unknownGoogle, profile: { email_verified: false } }), '/auth-error');
+  assert.equal(await config.callbacks.signIn(unknownGoogle), true);
+  assert.equal(unknownGoogle.user.temporaryGoogleOnboarding, true);
+  const onboardingToken = await config.callbacks.jwt({ token: {}, user: unknownGoogle.user, account: { provider: 'google' } });
+  assert.equal(onboardingToken.temporaryGoogleOnboarding, true);
+  delete process.env.GOOGLE_TEMPORARY_OWNER_ACCESS;
+  actor = null;
   current = false;
   assert.equal(await config.callbacks.jwt({ token: { email: 'fixture@example.invalid', loginMethod: 'credentials' } }), null);
   assert.ok(await config.callbacks.jwt({ token: { email: 'fixture@example.invalid', loginMethod: 'google' } }));

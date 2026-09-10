@@ -5,16 +5,19 @@ import type { PermissionCode } from "./permissions";
 
 export type { ActorContext } from "./identity-context";
 
-export async function getCurrentActor(): Promise<ActorContext | null> {
+export async function getCurrentActor(options: { allowPasswordChange?: boolean } = {}): Promise<ActorContext | null> {
   const session = await auth();
   const email = session?.user?.email;
   if (!email) return null;
-  return findActiveActorByEmail(email);
+  const actor = await findActiveActorByEmail(email);
+  if (actor?.mustChangePassword && !options.allowPasswordChange) return null;
+  return actor;
 }
 
 export async function requireActor(): Promise<ActorContext> {
-  const actor = await getCurrentActor();
+  const actor = await getCurrentActor({ allowPasswordChange: true });
   if (!actor) redirect("/login");
+  if (actor.mustChangePassword) redirect("/change-password");
   return actor;
 }
 

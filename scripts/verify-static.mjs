@@ -5,6 +5,12 @@ import { spawnSync } from "node:child_process";
 
 const root = process.cwd();
 const required = [
+  "src/db/migrations/0004_access_requests.sql", "src/modules/settings/access-request.service.ts",
+  "src/app/api/settings/access-requests/route.ts", "src/components/settings/access-request-manager.tsx",
+  "src/app/(auth)/access-pending/page.tsx", "src/app/(auth)/auth-error/page.tsx",
+  "src/db/migrations/0003_dual_login.sql", "scripts/set-user-password.ts",
+  "src/lib/auth/password.ts", "src/lib/auth/password-service.ts",
+  "src/app/(auth)/change-password/page.tsx", "src/app/api/auth/change-password/route.ts",
   "package.json", ".env.example", "tsconfig.json",
   "src/app/layout.tsx", "src/app/manifest.ts", "public/sw.js",
   "src/auth.ts", "src/db/migrations/0000_initial_schema.sql", "src/db/migrations/0001_handoff_hardening.sql",

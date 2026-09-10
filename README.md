@@ -1,5 +1,9 @@
 # Dopamin Cafe Accounting & Inventory System
 
+Password login is now available alongside the existing Google OAuth login, using the same users and RBAC. See [dual-login setup and verification](docs/DUAL_LOGIN.md) for migration `0003_dual_login.sql`, interactive password setup, lockout and mandatory password changes.
+
+Unknown verified Google accounts can now request access without creating a user. Owner/Director approve or reject requests in Settings. Migration `0004_access_requests.sql` adds the request workflow and normalized user-email uniqueness; deployment instructions are in the same guide.
+
 > **Codex handoff snapshot — v0.9.0-handoff**  
 > Internal application for Dopamin Cafe. This repository is intended to be the single source tree handed off for continued implementation in Codex. It is **not yet certified as a production release** because actual Google ingestion, end-to-end UAT, backup/restore and deployment validation remain incomplete. Install, bootstrap, Neon connectivity and Owner OAuth/login were already verified; see section 28 for current evidence.
 

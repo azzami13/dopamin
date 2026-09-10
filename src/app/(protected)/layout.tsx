@@ -33,6 +33,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
         <div className="sidebar-user">
           <strong>{actor.role}</strong>
           <span>{actor.fullName}</span>
+          <Link className="nav-link" href="/change-password">Ganti password</Link>
           <form action={async () => { "use server"; await signOut({ redirectTo: "/login" }); }}>
             <button className="ghost-button" type="submit">Keluar</button>
           </form>

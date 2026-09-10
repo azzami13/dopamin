@@ -13,6 +13,7 @@ const sql = postgres(url, {
 });
 
 const requiredTables = [
+  "access_requests",
   "roles",
   "permissions",
   "role_permissions",
@@ -222,6 +223,24 @@ async function main() {
       );
     }
 
+    const passwordColumns = await sql`select column_name, data_type, is_nullable from information_schema.columns
+      where table_schema='public' and table_name='users' and column_name in
+      ('password_hash','must_change_password','password_updated_at','failed_login_attempts','locked_until')`;
+    const expectedPasswordColumns: Record<string, [string, string]> = {
+      password_hash: ['text', 'YES'], must_change_password: ['boolean', 'NO'],
+      password_updated_at: ['timestamp with time zone', 'YES'], failed_login_attempts: ['integer', 'NO'],
+      locked_until: ['timestamp with time zone', 'YES'],
+    };
+    if (passwordColumns.length !== 5 || passwordColumns.some(column => {
+      const expected = expectedPasswordColumns[column.column_name];
+      return !expected || expected[0] !== column.data_type || expected[1] !== column.is_nullable;
+    })) throw new Error('Dual login schema is incomplete');
+    const [invalidAttempts] = await sql`select count(*)::int as count from users where failed_login_attempts < 0`;
+    if (invalidAttempts.count) throw new Error('Invalid login attempt counter');
+    const normalizedDuplicates = await sql`select 1 from users group by lower(trim(email)) having count(*) > 1`;
+    const pendingDuplicates = await sql`select 1 from access_requests where status='PENDING' group by lower(trim(email)) having count(*) > 1`;
+    const accessIndexes = await sql`select indexname from pg_indexes where schemaname='public' and indexname in ('users_normalized_email_uq','access_requests_pending_email_uq') and indexdef like 'CREATE UNIQUE INDEX%'`;
+    if (normalizedDuplicates.length || pendingDuplicates.length || accessIndexes.length !== 2) throw new Error('Access request uniqueness invariant failed');
     console.log("DB SMOKE PASSED");
     console.log(
       `${requiredTables.length} tables, ` +

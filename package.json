@@ -12,11 +12,17 @@
     "typecheck": "tsc --noEmit",
     "db:bootstrap": "tsx scripts/bootstrap-db.ts",
     "user:create": "tsx scripts/create-user.ts",
+    "user:set-password": "tsx scripts/set-user-password.ts",
+    "db:dual-login": "node scripts/apply-dual-login.mjs",
+    "db:access-requests": "node scripts/apply-access-requests.mjs",
+    "verify:auth": "node scripts/verify-auth.cjs",
+    "verify:auth:db": "node scripts/verify-auth-db.cjs",
     "verify:static": "node scripts/verify-static.mjs",
     "db:smoke": "tsx scripts/db-smoke.ts",
     "check": "npm run verify:static && npm run typecheck"
   },
   "dependencies": {
+    "bcryptjs": "3.0.3",
     "decimal.js": "10.6.0",
     "dotenv": "17.4.2",
     "drizzle-orm": "0.45.2",

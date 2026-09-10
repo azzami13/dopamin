@@ -32,7 +32,8 @@ export function appError(message: string, status = 422, code = "INVALID_REQUEST"
 
 export async function requireApiActor() {
   const { getCurrentActor } = await import("@/lib/auth/authorization");
-  const actor = await getCurrentActor();
+  const actor = await getCurrentActor({ allowPasswordChange: true });
   if (!actor) throw appError("Authentication required", 401, "UNAUTHENTICATED");
+  if (actor.mustChangePassword) throw appError("Password wajib diganti terlebih dahulu.", 403, "PASSWORD_CHANGE_REQUIRED");
   return actor;
 }

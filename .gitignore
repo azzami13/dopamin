@@ -1,5 +1,6 @@
 # dependencies / builds
 node_modules/
+.npm-cache/
 .next/
 out/
 dist/

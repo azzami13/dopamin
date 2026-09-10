@@ -133,6 +133,97 @@ function hasMeaningfulValue(
   return true;
 }
 
+
+/*
+ * Ambil teks pendamping untuk satu logical expense target.
+ *
+ * Contoh:
+ *   EXPENSE / TRANSPORT
+ *   EXPENSE_STAFF / TRANSPORT
+ *   EXPENSE_DESCRIPTION / TRANSPORT
+ *
+ * targetKey dipakai sebagai pengikat antar-field, walaupun
+ * master expense category untuk target tersebut belum tersedia.
+ */
+function mappedCompanionText(
+  payload:
+    Record<
+      string,
+      unknown
+    >,
+
+  mappings:
+    MappingRow[],
+
+  mappingType:
+    string,
+
+  targetKey:
+    string,
+): string | null {
+  const companion =
+    mappedValues(
+      payload,
+      mappings,
+      mappingType,
+    ).find(
+      (candidate) =>
+        candidate.targetKey ===
+          targetKey &&
+        hasMeaningfulValue(
+          candidate.value,
+        ),
+    );
+
+  if (!companion) {
+    return null;
+  }
+
+  const value =
+    unwrap(
+      companion.value,
+    );
+
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return null;
+  }
+
+  if (
+    Array.isArray(
+      value,
+    )
+  ) {
+    const parts =
+      value
+        .map(
+          (item) =>
+            String(
+              unwrap(item) ??
+                "",
+            ).trim(),
+        )
+        .filter(
+          (item) =>
+            item.length >
+            0,
+        );
+
+    return (
+      parts.join(", ") ||
+      null
+    );
+  }
+
+  return (
+    String(value)
+      .trim() ||
+    null
+  );
+}
+
 /*
  * Resolve nama mentah dari Form
  * melalui user_source_aliases.
@@ -1084,15 +1175,113 @@ export async function normalizeCashier(
        * =====================================================
        * EXPENSE LINES
        * =====================================================
+       *
+       * Expense amount, staff, dan description diikat dengan
+       * targetKey yang sama.
+       *
+       * Contoh:
+       *
+       *   EXPENSE             / TRANSPORT
+       *   EXPENSE_STAFF       / TRANSPORT
+       *   EXPENSE_DESCRIPTION / TRANSPORT
+       *
+       * Jika master expense category TRANSPORT belum tersedia,
+       * line tetap disimpan memakai fallback UNMAPPED dan
+       * report ditandai NEEDS_REVIEW.
        */
 
-      for (
-        const expense of
+      const expenseMaps =
         mappedValues(
           payload,
           mappings,
           "EXPENSE",
-        )
+        );
+
+      if (
+        expenseMaps.length ===
+        0
+      ) {
+        needsReview =
+          true;
+
+        issueCount++;
+
+        await issue(
+          tx,
+          input.rawSubmissionId,
+          "CASHIER",
+          "WARNING",
+          "EXPENSE_MAPPING_MISSING",
+          "Belum ada source_field_mapping bertipe EXPENSE untuk sumber Cashier.",
+        );
+      }
+
+      const expenseTargetsWithValue =
+        new Set(
+          expenseMaps
+            .filter(
+              (expense) =>
+                hasMeaningfulValue(
+                  expense.value,
+                ),
+            )
+            .map(
+              (expense) =>
+                expense.targetKey,
+            ),
+        );
+
+      /*
+       * Metadata expense yang terisi tanpa amount pasangannya
+       * perlu ditinjau agar data staff/description tidak diam-diam
+       * terlepas dari transaksi pengeluaran.
+       */
+      for (
+        const metadataType of
+        [
+          "EXPENSE_STAFF",
+          "EXPENSE_DESCRIPTION",
+        ]
+      ) {
+        for (
+          const metadata of
+          mappedValues(
+            payload,
+            mappings,
+            metadataType,
+          )
+        ) {
+          if (
+            !hasMeaningfulValue(
+              metadata.value,
+            ) ||
+            expenseTargetsWithValue.has(
+              metadata.targetKey,
+            )
+          ) {
+            continue;
+          }
+
+          needsReview =
+            true;
+
+          issueCount++;
+
+          await issue(
+            tx,
+            input.rawSubmissionId,
+            "CASHIER",
+            "WARNING",
+            "ORPHAN_EXPENSE_METADATA",
+            `Field ${metadataType} untuk target ${metadata.targetKey} berisi nilai tetapi tidak ada amount EXPENSE yang terisi.`,
+            metadata.sourceFieldName,
+          );
+        }
+      }
+
+      for (
+        const expense of
+        expenseMaps
       ) {
         if (
           !hasMeaningfulValue(
@@ -1163,6 +1352,22 @@ export async function normalizeCashier(
         ) {
           continue;
         }
+
+        const staffNameRaw =
+          mappedCompanionText(
+            payload,
+            mappings,
+            "EXPENSE_STAFF",
+            expense.targetKey,
+          );
+
+        const description =
+          mappedCompanionText(
+            payload,
+            mappings,
+            "EXPENSE_DESCRIPTION",
+            expense.targetKey,
+          );
 
         /*
          * Cari kategori pengeluaran aktif.
@@ -1285,6 +1490,10 @@ export async function normalizeCashier(
               resolvedCategoryId,
 
             amount,
+
+            staffNameRaw,
+
+            description,
 
             sourceField:
               expense.sourceFieldName,

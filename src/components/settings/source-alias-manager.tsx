@@ -1,5 +1,6 @@
 "use client";
 
+import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { useMemo, useState } from "react";
 
 type Alias = { id: string; userId: string; userName: string; userEmail: string; role: string; sourceCode: string; alias: string; isActive: boolean };
@@ -50,11 +51,11 @@ export function SourceAliasManager({ initialAliases, users }: { initialAliases: 
       <button className="primary-button" type="submit">Simpan alias</button>
     </form>
     {message && <p className="muted">{message}</p>}
-    <div className="table-wrap">
+    <ResponsiveTable className="table-wrap">
       <table className="data-table"><thead><tr><th>Source</th><th>Alias</th><th>User</th><th>Role</th><th>Status</th><th>Aksi</th></tr></thead><tbody>
         {aliases.map((item) => <tr key={item.id}><td>{item.sourceCode}</td><td>{item.alias}</td><td>{item.userName}<br/><small>{item.userEmail}</small></td><td>{item.role}</td><td>{item.isActive ? "ACTIVE" : "INACTIVE"}</td><td><button className="secondary-button" type="button" onClick={() => toggle(item)}>{item.isActive ? "Nonaktifkan" : "Aktifkan"}</button></td></tr>)}
         {!aliases.length && <tr><td colSpan={6} className="muted">Belum ada alias.</td></tr>}
       </tbody></table>
-    </div>
+    </ResponsiveTable>
   </section>;
 }

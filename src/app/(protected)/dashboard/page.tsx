@@ -46,7 +46,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         </form>
       </header>
 
-      <section className="kpi-grid">
+      <section className="kpi-grid dashboard-kpis">
         {cards.map(([label, value, meta]) => <article className="kpi-card" key={label}><div className="kpi-label">{label}</div><div className="kpi-value">{value}</div><div className="muted kpi-meta">{meta}</div></article>)}
       </section>
 
@@ -54,7 +54,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <article className="panel">
           <div className="panel-title-row"><h2>Revenue Trend</h2><span className="muted">7 hari</span></div>
           <div className="trend-bars">
-            {data.trend.length ? data.trend.map((point) => <div className="trend-column" key={point.businessDate} title={`${point.businessDate}: ${idr(point.total)}`}><div className="trend-bar" style={{ height: `${Math.max(4, Math.round((Number(point.total) / maxTrend) * 150))}px` }} /><span>{point.businessDate.slice(8)}</span></div>) : <p className="muted">Belum ada data trend.</p>}
+            {data.trend.length ? data.trend.map((point) => <div tabIndex={0} aria-label={point.businessDate + ": " + idr(point.total)} className="trend-column" key={point.businessDate} title={`${point.businessDate}: ${idr(point.total)}`}><span className="trend-value">{new Intl.NumberFormat("id-ID", { notation: "compact", maximumFractionDigits: 1 }).format(Number(point.total))}</span><div aria-hidden="true" className="trend-bar" style={{ height: `${Math.max(4, Math.round((Number(point.total) / maxTrend) * 150))}px` }} /><span>{point.businessDate.slice(5).split("-").reverse().join("/")}</span></div>) : <p className="muted">Belum ada data trend.</p>}
           </div>
         </article>
         <article className="panel">
@@ -65,7 +65,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
       {manager && <section className="kpi-grid secondary-grid"><article className="kpi-card"><div className="kpi-label">Sales ↔ Payment Difference</div><div className="kpi-value">{idr(difference)}</div><div className="muted kpi-meta">Reconciliation signal; not manually editable</div></article><article className="kpi-card"><div className="kpi-label">Stock Variances</div><div className="kpi-value">{data.inventoryVarianceCount}</div><div className="muted kpi-meta">Exceptions requiring review</div></article><article className="kpi-card"><div className="kpi-label">Stock Categories Complete</div><div className="kpi-value">{data.stockCompletedCategories} / 3</div><div className="muted kpi-meta">Kitchen / Bar / Other</div></article></section>}
 
-      {cashier && <section className="panel"><h2>Today Submission</h2><div className="status-list"><div>Cashier Form <Badge ok={m.cashierComplete}>{m.cashierComplete ? "SUBMITTED" : "CHECK"}</Badge></div><div>Beverage Form <Badge ok={m.beverageComplete}>{m.beverageComplete ? "SUBMITTED" : "CHECK"}</Badge></div></div></section>}
+      {cashier && <section className="panel"><h2>Submission pada Business Date</h2><div className="status-list"><div>Cashier Form <Badge ok={m.cashierComplete}>{m.cashierComplete ? "SUBMITTED" : "CHECK"}</Badge></div><div>Beverage Form <Badge ok={m.beverageComplete}>{m.beverageComplete ? "SUBMITTED" : "CHECK"}</Badge></div></div></section>}
       {actor.role === "KITCHEN" && <section className="panel"><h2>Kitchen Submission</h2><div className="status-list"><div>Food Report <Badge ok={m.kitchenComplete}>{m.kitchenComplete ? "SUBMITTED" : "NOT SUBMITTED"}</Badge></div></div><p className="muted">Stock Opname Kitchen tersedia melalui modul Inventory. Informasi Housebank/finance tidak ditampilkan untuk role Kitchen.</p></section>}
     </main>
   );

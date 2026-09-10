@@ -1,3 +1,4 @@
+import { Navigation } from "@/components/ui/navigation";
 import Link from "next/link";
 import { signOut } from "@/auth";
 import { requireActor } from "@/lib/auth/authorization";
@@ -22,24 +23,17 @@ export default async function ProtectedLayout({ children }: { children: React.Re
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <div className="sidebar-brand">dopamin</div>
-        <div className="sidebar-subtitle">coffee & workspace</div>
-        <nav>
-          {items.filter((item) => item[2]).map(([href, label]) => (
-            <Link className="nav-link" href={href} key={href}>{label}</Link>
-          ))}
-        </nav>
-        <div className="sidebar-user">
+      <a className="skip-link" href="#main-content">Lewati navigasi</a>
+      <Navigation items={items.filter(item => item[2]).map(([href, label]) => ({ href, label }))}>
+
           <strong>{actor.role}</strong>
           <span>{actor.fullName}</span>
           <Link className="nav-link" href="/change-password">Ganti password</Link>
           <form action={async () => { "use server"; await signOut({ redirectTo: "/login" }); }}>
             <button className="ghost-button" type="submit">Keluar</button>
           </form>
-        </div>
-      </aside>
-      <main className="app-content">{children}</main>
+      </Navigation>
+      <div className="app-content" id="main-content" tabIndex={-1}><div className="workspace-header"><span>Operations workspace</span><span>Asia/Jakarta / Business Date</span></div>{children}</div>
     </div>
   );
 }

@@ -14,9 +14,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <div className="brand-kicker">dopamin coffee & workspace</div>
         <h1>Dopamin Cafe</h1>
         <p>Accounting & Inventory System</p>
-        <p className="muted">Gunakan akun yang sudah didaftarkan oleh Owner/Director.</p>
+        <p className="muted">Masuk dengan akun Anda untuk mengelola operasional Dopamin Cafe.</p>
         <LoginForm initialError={(await searchParams).error ? LOGIN_ERROR : ""} />
-        <p className="muted" style={{ textAlign: "center" }}>atau</p>
+        <p className="muted login-divider">atau</p>
         <form
           action={googleLogin}
         >

@@ -12,9 +12,9 @@ export function VerificationCountdown() {
     const timeout = setTimeout(() => router.replace("/dashboard"), 5000);
     return () => { clearInterval(interval); clearTimeout(timeout); };
   }, [router]);
-  return <main className="flex min-h-screen items-center justify-center p-6">
-    <section className="space-y-4 text-center" aria-live="polite">
-      <h1 className="text-2xl font-semibold">Verifikasi akun Google berhasil</h1>
+  return <main className="center-state">
+    <section className="login-card empty-state" aria-live="polite">
+      <h1 >Verifikasi akun Google berhasil</h1>
       <p>Menyiapkan akses ke semua fitur Dopamin Cafe.</p>
       <p>Masuk ke dashboard dalam {seconds} detik...</p>
     </section>
